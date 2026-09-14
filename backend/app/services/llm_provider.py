@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+import asyncio
 from typing import Dict, Any, Optional, List
 from app.core.config import settings
 
@@ -29,15 +30,18 @@ class GeminiProvider(LLMProvider):
         self.model = model_name or settings.GEMINI_MODEL or "gemini-3.6-flash"
         self._fallback = MockLLMProvider()
 
-    async def generate_json(self, prompt: str, schema_description: str) -> Dict[str, Any]:
-        from google.genai import types
+   async def generate_json(self, prompt: str, schema_description: str) -> Dict[str, Any]:
+    from google.genai import types
+    import asyncio
+
+    full_prompt = (
+        f"Return ONLY valid JSON matching this schema description:\n"
+        f"{schema_description}\n\n"
+        f"Task:\n{prompt}"
+    )
+
+    for attempt in range(3):
         try:
-            full_prompt = (
-                f"You are an expert AI recruiting and parsing engine.\n"
-                f"Return ONLY a valid JSON object matching this schema description exactly:\n"
-                f"{schema_description}\n\n"
-                f"Task and Input Data:\n{prompt}"
-            )
             response = await self.client.aio.models.generate_content(
                 model=self.model,
                 contents=full_prompt,
@@ -46,14 +50,41 @@ class GeminiProvider(LLMProvider):
                     temperature=0.0
                 )
             )
-            raw_text = response.text or "{}"
-            clean = re.sub(r'^```(?:json)?\s*', '', raw_text.strip(), flags=re.IGNORECASE)
-            clean = re.sub(r'\s*```$', '', clean).strip()
-            return json.loads(clean)
-        except Exception as e:
-            logger.error(f"Gemini generate_json failed ({type(e).__name__}: {str(e)[:200]}). Invoking semantic fallback.")
-            return await self._fallback.generate_json(prompt, schema_description)
 
+            raw_text = response.text or "{}"
+
+            clean = re.sub(
+                r"```json\s*|\s*```",
+                "",
+                raw_text.strip(),
+                flags=re.IGNORECASE
+            )
+
+            clean = re.sub(
+                r"\s*```$",
+                "",
+                clean
+            ).strip()
+
+            return json.loads(clean)
+
+        except Exception as e:
+            logger.error(
+                f"Gemini generate_json attempt {attempt + 1}/3 failed: "
+                f"{type(e).__name__}: {str(e)[:300]}"
+            )
+
+            if attempt < 2:
+                await asyncio.sleep(2 ** attempt)
+            else:
+                logger.error(
+                    "Gemini unavailable after 3 attempts. "
+                    "Invoking semantic fallback."
+                )
+                return await self._fallback.generate_json(
+                    prompt,
+                    schema_description
+                )
     async def generate_text(self, prompt: str) -> str:
         from google.genai import types
         try:

@@ -28,9 +28,16 @@ async def seed_admin_user():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize DB tables on startup
+    print("STARTUP: beginning database initialization...", flush=True)
+
     await init_db()
+
+    print("STARTUP: database initialization complete.", flush=True)
+
     await seed_admin_user()
+
+    print("STARTUP: admin user initialization complete.", flush=True)
+
     yield
 
 app = FastAPI(
@@ -45,7 +52,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
     "http://localhost:5173",
-    "https://resume-screening-liard.vercel.app",
+    "https://resume-screening-liard.vercel.app"
+    "https://resume-screening-2totp8vzi-rohithc1526s-projects.vercel.app",
 ],
     allow_credentials=True,
     allow_methods=["*"],

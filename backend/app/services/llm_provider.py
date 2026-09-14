@@ -8,12 +8,10 @@ from typing import Dict, Any, Optional, List
 
 from app.core.config import settings
 
-
 logger = logging.getLogger(__name__)
 
 
 class LLMProvider(ABC):
-
     @abstractmethod
     async def generate_json(
         self,
@@ -28,11 +26,6 @@ class LLMProvider(ABC):
 
 
 class GeminiProvider(LLMProvider):
-    """
-    Official Google GenAI Python SDK integration.
-    Uses google-genai.
-    """
-
     def __init__(
         self,
         api_key: str,
@@ -41,13 +34,11 @@ class GeminiProvider(LLMProvider):
         from google import genai
 
         self.client = genai.Client(api_key=api_key)
-
         self.model = (
             model_name
             or settings.GEMINI_MODEL
-            or "gemini-2.5-flash"
+            or "gemini-3.6-flash"
         )
-
         self._fallback = MockLLMProvider()
 
     async def generate_json(
@@ -55,7 +46,6 @@ class GeminiProvider(LLMProvider):
         prompt: str,
         schema_description: str
     ) -> Dict[str, Any]:
-
         from google.genai import types
 
         full_prompt = (
@@ -65,7 +55,6 @@ class GeminiProvider(LLMProvider):
         )
 
         for attempt in range(3):
-
             try:
                 response = await self.client.aio.models.generate_content(
                     model=self.model,
@@ -83,39 +72,72 @@ class GeminiProvider(LLMProvider):
                     "",
                     raw_text.strip(),
                     flags=re.IGNORECASE
-                )
-
-                clean = re.sub(
-                    r"\s*```$",
-                    "",
-                    clean
                 ).strip()
 
                 return json.loads(clean)
 
             except Exception as e:
+                error_text = str(e)
 
                 logger.error(
                     f"Gemini generate_json attempt "
                     f"{attempt + 1}/3 failed: "
-                    f"{type(e).__name__}: {str(e)[:300]}"
+                    f"{type(e).__name__}: {error_text[:300]}"
                 )
 
-                if attempt < 2:
-                    await asyncio.sleep(2 ** attempt)
-
-                else:
+                # 404 = model/config problem; don't retry
+                if "404" in error_text or "NOT_FOUND" in error_text:
                     logger.error(
-                        "Gemini unavailable after 3 attempts. "
-                        "Invoking semantic fallback."
+                        f"Gemini model '{self.model}' unavailable. "
+                        "Using semantic fallback."
                     )
+                    break
 
-                    return await self._fallback.generate_json(
-                        prompt,
-                        schema_description
-                    )
+                # Retry temporary Gemini errors
+                if (
+                    "429" in error_text
+                    or "RESOURCE_EXHAUSTED" in error_text
+                    or "503" in error_text
+                    or "UNAVAILABLE" in error_text
+                ):
+                    if attempt < 2:
+                        await asyncio.sleep(2 ** attempt)
+                        continue
 
-        return {}
+                break
+
+        logger.error(
+            "Gemini generate_json failed. "
+            "Invoking semantic fallback."
+        )
+
+        return await self._fallback.generate_json(
+            prompt,
+            schema_description
+        )
+
+    async def generate_text(self, prompt: str) -> str:
+        from google.genai import types
+
+        try:
+            response = await self.client.aio.models.generate_content(
+                model=self.model,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.2
+                )
+            )
+
+            return response.text or ""
+
+        except Exception as e:
+            logger.error(
+                f"Gemini generate_text failed "
+                f"({type(e).__name__}: {str(e)[:200]}). "
+                "Invoking semantic fallback."
+            )
+
+            return await self._fallback.generate_text(prompt)
 
 
     async def generate_text(self, prompt: str) -> str:

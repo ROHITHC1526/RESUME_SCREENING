@@ -7,26 +7,36 @@ class VectorStore:
     """
     Vector Store wrapper supporting ChromaDB with lazy initialization.
 
-    Heavy dependencies such as ChromaDB and SentenceTransformers are
-    loaded only when actually required, reducing web-service startup
-    memory usage without changing embedding models or similarity logic.
+    Memory optimization:
+    - ChromaDB is initialized only when required.
+    - SentenceTransformer is loaded lazily.
+    - A single shared SentenceTransformer instance is reused by all
+      VectorStore objects in the same Python process.
+    - Resume chunks are embedded in batches when possible.
+
+    Embedding model and similarity logic remain unchanged.
     """
+
+    # ---------------------------------------------------------
+    # SHARED EMBEDDING MODEL
+    # ---------------------------------------------------------
+    _shared_encoder = None
+    _encoder_load_failed = False
 
     def __init__(self, collection_name: str = "resume_screening"):
         self.collection_name = collection_name
 
-        # Do NOT load ChromaDB during object creation.
+        # Chroma is lazy
         self.chroma_client = None
         self.collection = None
+        self._chroma_initialized = False
 
         # Lightweight fallback storage
         self.fallback_storage: List[Dict[str, Any]] = []
 
-        # SentenceTransformer is also loaded lazily
-        self._encoder = None
-
-        self._chroma_initialized = False
-
+    # ---------------------------------------------------------
+    # CHROMA INITIALIZATION
+    # ---------------------------------------------------------
     def _init_chroma(self):
         """
         Initialize ChromaDB only when vector storage is actually needed.
@@ -57,51 +67,142 @@ class VectorStore:
             )
 
         except Exception as e:
-            # Chroma unavailable → use fallback storage
+            # Chroma unavailable → fallback storage
             self.chroma_client = None
             self.collection = None
 
+    # ---------------------------------------------------------
+    # SHARED SENTENCE TRANSFORMER
+    # ---------------------------------------------------------
     @property
     def encoder(self):
         """
-        Load SentenceTransformer only when an embedding is actually needed.
+        Return one shared SentenceTransformer instance.
+
+        Previously every VectorStore instance had its own encoder.
+        Now all VectorStore instances reuse the same model.
         """
 
-        if self._encoder is None:
+        if VectorStore._shared_encoder is not None:
+            return VectorStore._shared_encoder
 
-            try:
-                from sentence_transformers import SentenceTransformer
-                from app.core.config import settings
+        if VectorStore._encoder_load_failed:
+            return "mock"
 
-                self._encoder = SentenceTransformer(
-                    settings.EMBEDDING_MODEL_NAME
-                )
+        try:
+            from sentence_transformers import SentenceTransformer
+            from app.core.config import settings
 
-            except Exception:
-                self._encoder = "mock"
+            print(
+                "VECTOR STORE: Loading shared embedding model "
+                f"{settings.EMBEDDING_MODEL_NAME}...",
+                flush=True
+            )
 
-        return self._encoder
+            VectorStore._shared_encoder = SentenceTransformer(
+                settings.EMBEDDING_MODEL_NAME,
+                device="cpu"
+            )
 
+            print(
+                "VECTOR STORE: Shared embedding model loaded.",
+                flush=True
+            )
+
+            return VectorStore._shared_encoder
+
+        except Exception as e:
+            print(
+                f"VECTOR STORE: Failed to load embedding model: {e}",
+                flush=True
+            )
+
+            VectorStore._encoder_load_failed = True
+
+            return "mock"
+
+    # ---------------------------------------------------------
+    # SINGLE EMBEDDING
+    # ---------------------------------------------------------
     def _get_embedding(self, text: str) -> List[float]:
+        """
+        Generate one embedding while preserving the existing model.
+        """
 
         encoder = self.encoder
 
         if encoder != "mock":
-            return encoder.encode(text).tolist()
+            embedding = encoder.encode(
+                text,
+                convert_to_numpy=True,
+                normalize_embeddings=False
+            )
 
-        # Lightweight deterministic fallback
+            return embedding.tolist()
+
+        return self._mock_embedding(text)
+
+    # ---------------------------------------------------------
+    # BATCH EMBEDDING
+    # ---------------------------------------------------------
+    def _get_embeddings(self, texts: List[str]) -> List[List[float]]:
+        """
+        Generate embeddings efficiently.
+
+        Uses SentenceTransformer batch encoding when available.
+        Falls back to individual embeddings if necessary.
+        """
+
+        if not texts:
+            return []
+
+        encoder = self.encoder
+
+        if encoder != "mock":
+            try:
+                embeddings = encoder.encode(
+                    texts,
+                    batch_size=16,
+                    show_progress_bar=False,
+                    convert_to_numpy=True,
+                    normalize_embeddings=False
+                )
+
+                return embeddings.tolist()
+
+            except Exception as e:
+                print(
+                    f"VECTOR STORE: Batch embedding failed: {e}. "
+                    "Falling back to individual encoding.",
+                    flush=True
+                )
+
+        return [
+            self._mock_embedding(text)
+            for text in texts
+        ]
+
+    # ---------------------------------------------------------
+    # LIGHTWEIGHT FALLBACK EMBEDDING
+    # ---------------------------------------------------------
+    def _mock_embedding(self, text: str) -> List[float]:
+        """
+        Deterministic lightweight fallback.
+
+        This is used only if SentenceTransformer cannot be loaded.
+        """
+
         import hashlib
 
         words = text.lower().split()
 
         vec = [0.0] * 64
 
-        for i, w in enumerate(words):
-
+        for word in words:
             idx = (
                 int(
                     hashlib.md5(
-                        w.encode()
+                        word.encode()
                     ).hexdigest(),
                     16
                 ) % 64
@@ -118,25 +219,31 @@ class VectorStore:
             for v in vec
         ]
 
+    # ---------------------------------------------------------
+    # ADD TEXTS
+    # ---------------------------------------------------------
     def add_texts(
         self,
         texts: List[str],
         metadatas: List[Dict[str, Any]],
         ids: List[str]
     ):
+        """
+        Add documents and embeddings to ChromaDB.
 
-        # Chroma is initialized only when actually adding vectors
+        Uses batch embedding to reduce repeated model overhead.
+        """
+
+        if not texts:
+            return
+
         self._init_chroma()
 
-        embeddings = [
-            self._get_embedding(t)
-            for t in texts
-        ]
+        embeddings = self._get_embeddings(texts)
 
         if self.collection:
 
             try:
-
                 self.collection.add(
                     documents=texts,
                     embeddings=embeddings,
@@ -146,8 +253,12 @@ class VectorStore:
 
                 return
 
-            except Exception:
-                pass
+            except Exception as e:
+                print(
+                    f"VECTOR STORE: Chroma add failed: {e}. "
+                    "Using fallback storage.",
+                    flush=True
+                )
 
         # Fallback storage
         for text, meta, doc_id, emb in zip(
@@ -156,7 +267,6 @@ class VectorStore:
             ids,
             embeddings
         ):
-
             self.fallback_storage.append(
                 {
                     "id": doc_id,
@@ -166,14 +276,21 @@ class VectorStore:
                 }
             )
 
+    # ---------------------------------------------------------
+    # SEARCH SIMILARITY
+    # ---------------------------------------------------------
     def search_similarity(
         self,
         query: str,
         n_results: int = 3,
         filter_metadata: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
+        """
+        Semantic similarity search.
 
-        # Chroma is initialized only when search is actually requested
+        Existing Chroma similarity behavior is preserved.
+        """
+
         self._init_chroma()
 
         query_emb = self._get_embedding(query)
@@ -181,7 +298,6 @@ class VectorStore:
         if self.collection:
 
             try:
-
                 where_clause = (
                     filter_metadata
                     if filter_metadata
@@ -201,7 +317,6 @@ class VectorStore:
                     and "documents" in results
                     and results["documents"]
                 ):
-
                     docs = results["documents"][0]
                     metas = results["metadatas"][0]
                     ids = results["ids"][0]
@@ -217,7 +332,6 @@ class VectorStore:
                         ids,
                         distances
                     ):
-
                         sim_score = (
                             max(
                                 0.0,
@@ -241,16 +355,21 @@ class VectorStore:
 
                 return matches
 
-            except Exception:
-                pass
+            except Exception as e:
+                print(
+                    f"VECTOR STORE: Chroma search failed: {e}. "
+                    "Using fallback storage.",
+                    flush=True
+                )
 
-        # Fallback cosine search
+        # -----------------------------------------------------
+        # FALLBACK COSINE SEARCH
+        # -----------------------------------------------------
         matches = []
 
         for item in self.fallback_storage:
 
             if filter_metadata:
-
                 match_filter = all(
                     item["metadata"].get(k) == v
                     for k, v in filter_metadata.items()

@@ -45,7 +45,7 @@ class GeminiProvider(LLMProvider):
         self.model = (
             model_name
             or settings.GEMINI_MODEL
-            or "gemini-3.6-flash"
+            or "gemini-2.5-flash"
         )
 
         self._fallback = MockLLMProvider()

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle, Loader2 } from 'lucide-react';
 import { api } from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
 
@@ -36,57 +36,57 @@ export const LoginForm: React.FC = () => {
   return (
     <div>
       {error && (
-        <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 flex items-start gap-3 text-red-700 text-sm">
-          <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+        <div className="mb-5 p-3.5 rounded-xl bg-red-950/60 border border-red-500/40 flex items-start gap-3 text-red-200 text-xs">
+          <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-red-400" />
           <div>{error}</div>
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-xs font-semibold text-ink-900 uppercase tracking-wider mb-2">
+          <label className="block text-xs font-semibold text-paper-200 uppercase tracking-wider mb-1.5 font-mono">
             Work Email Address
           </label>
           <div className="relative">
-            <Mail className="w-5 h-5 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <Mail className="w-4 h-4 text-paper-300/60 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="recruiter@company.com"
-              className="w-full pl-11 pr-4 py-3 bg-paper-50 border border-paper-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-brand focus:border-amber-brand text-ink-900 text-sm transition-all"
+              className="w-full pl-10 pr-4 py-2.5 bg-ink-900/90 border border-ink-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-brand focus:border-amber-brand text-white text-xs placeholder:text-gray-500 transition-all shadow-inner"
             />
           </div>
         </div>
 
         <div>
-          <div className="flex justify-between items-center mb-2">
-            <label className="block text-xs font-semibold text-ink-900 uppercase tracking-wider">
+          <div className="flex justify-between items-center mb-1.5">
+            <label className="block text-xs font-semibold text-paper-200 uppercase tracking-wider font-mono">
               Password
             </label>
             <button
               type="button"
               onClick={() => setShowForgotModal(true)}
-              className="text-xs text-amber-brand hover:underline font-medium"
+              className="text-xs text-amber-brand hover:text-amber-300 transition-colors font-medium"
             >
               Forgot password?
             </button>
           </div>
           <div className="relative">
-            <Lock className="w-5 h-5 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <Lock className="w-4 h-4 text-paper-300/60 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type={showPassword ? 'text' : 'password'}
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••••••"
-              className="w-full pl-11 pr-11 py-3 bg-paper-50 border border-paper-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-brand focus:border-amber-brand text-ink-900 text-sm transition-all"
+              className="w-full pl-10 pr-10 py-2.5 bg-ink-900/90 border border-ink-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-brand focus:border-amber-brand text-white text-xs placeholder:text-gray-500 transition-all shadow-inner"
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-ink-900"
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-paper-100"
             >
               {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
@@ -96,48 +96,53 @@ export const LoginForm: React.FC = () => {
         <button
           type="submit"
           disabled={loading}
-          className="w-full py-3.5 px-6 bg-ink-900 hover:bg-ink-800 text-paper-50 font-medium text-sm rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 group disabled:opacity-50"
+          className="w-full mt-2 py-3 px-6 bg-gradient-to-r from-amber-brand to-amber-hover hover:from-amber-500 hover:to-amber-brand text-ink-900 font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg hover:shadow-amber-brand/30 transition-all flex items-center justify-center gap-2 group disabled:opacity-50"
         >
-          {loading ? 'Authenticating...' : (
+          {loading ? (
             <>
-              Sign In to Intelligence Portal
+              <Loader2 className="w-4 h-4 animate-spin text-ink-900" />
+              <span>Authenticating...</span>
+            </>
+          ) : (
+            <>
+              <span>Sign In to Intelligence Portal</span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </>
           )}
         </button>
       </form>
 
-      <div className="mt-8 pt-6 border-t border-paper-200 text-center text-sm text-gray-600">
+      <div className="mt-6 pt-5 border-t border-ink-700/60 text-center text-xs text-paper-300">
         Don't have an account?{' '}
-        <Link to="/register" className="text-amber-brand hover:underline font-semibold">
+        <Link to="/register" className="text-amber-brand hover:text-amber-300 font-bold transition-colors">
           Create Recruiter Account
         </Link>
       </div>
 
       {/* Forgot Password Modal */}
       {showForgotModal && (
-        <div className="fixed inset-0 bg-ink-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full border border-paper-300 shadow-2xl">
-            <h3 className="font-serif text-xl font-bold text-ink-900 mb-2">Reset Password</h3>
-            <p className="text-sm text-gray-600 mb-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-ink-800 border border-ink-700 rounded-2xl p-6 max-w-md w-full shadow-2xl text-white">
+            <h3 className="font-serif text-xl font-bold text-white mb-2">Reset Password</h3>
+            <p className="text-xs text-paper-300 mb-4">
               Enter your registered email address and we'll send instructions to reset your password.
             </p>
             {forgotEmailSent ? (
-              <div className="p-3 bg-emerald-light border border-emerald-brand text-emerald-brand rounded-xl text-sm mb-4">
+              <div className="p-3 bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 rounded-xl text-xs mb-4">
                 Password reset instructions sent to your email.
               </div>
             ) : (
               <input
                 type="email"
                 placeholder="recruiter@company.com"
-                className="w-full p-3 bg-paper-50 border border-paper-300 rounded-xl mb-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-brand"
+                className="w-full p-2.5 bg-ink-900 border border-ink-600 rounded-xl mb-4 text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-brand"
               />
             )}
             <div className="flex justify-end gap-3">
               <button
                 type="button"
                 onClick={() => { setShowForgotModal(false); setForgotEmailSent(false); }}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-ink-900"
+                className="px-4 py-2 text-xs text-paper-300 hover:text-white"
               >
                 Close
               </button>
@@ -145,7 +150,7 @@ export const LoginForm: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setForgotEmailSent(true)}
-                  className="px-4 py-2 text-sm bg-amber-brand text-white rounded-xl font-medium"
+                  className="px-4 py-2 text-xs bg-amber-brand text-ink-900 font-bold rounded-xl"
                 >
                   Send Reset Link
                 </button>

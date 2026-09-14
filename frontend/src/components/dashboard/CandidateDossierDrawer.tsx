@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, ShieldCheck, CheckCircle, XCircle, FileText, AlertCircle, Award, Edit3, Save, Sparkles, Mail, ThumbsUp, ThumbsDown, CheckCircle2, UserCheck, Briefcase, GraduationCap, FileCheck } from 'lucide-react';
+import { X, ShieldCheck, CheckCircle, XCircle, FileText, AlertCircle, AlertTriangle, Award, Edit3, Save, Sparkles, Mail, ThumbsUp, ThumbsDown, CheckCircle2, UserCheck, Briefcase, GraduationCap, FileCheck } from 'lucide-react';
 import { Candidate } from '../../types';
 import { ScoreBreakdownChart } from './ScoreBreakdownChart';
 import { ReviewFlagBanner } from './ReviewFlagBanner';
@@ -317,7 +317,7 @@ export const CandidateDossierDrawer: React.FC<CandidateDossierDrawerProps> = ({
                 {candidate.parsed_json?.experience_years || 0.0}
               </div>
               <div className="text-xs text-gray-600 font-mono">
-                Years of Total Relevant Industry Experience
+                Years of Industry Experience Extracted from Resume
               </div>
             </div>
             {candidate.parsed_json?.work_experience && candidate.parsed_json.work_experience.length > 0 && (
@@ -333,7 +333,7 @@ export const CandidateDossierDrawer: React.FC<CandidateDossierDrawerProps> = ({
             )}
           </div>
 
-          {/* 2. Education & Certifications */}
+          {/* 2. Education & Certifications (Extracted Strictly from Resume) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Education */}
             <div className="bg-white p-5 rounded-xl border border-paper-200 shadow-sm">
@@ -349,7 +349,9 @@ export const CandidateDossierDrawer: React.FC<CandidateDossierDrawerProps> = ({
                   ))}
                 </ul>
               ) : (
-                <div className="text-xs text-gray-400 font-mono italic">No formal degree listed</div>
+                <div className="p-3 bg-paper-50 rounded-lg border border-paper-200 text-xs text-gray-500 font-mono italic">
+                  No formal education information found in resume
+                </div>
               )}
             </div>
 
@@ -367,22 +369,45 @@ export const CandidateDossierDrawer: React.FC<CandidateDossierDrawerProps> = ({
                   ))}
                 </ul>
               ) : (
-                <div className="text-xs text-gray-400 font-mono italic">No certifications listed</div>
+                <div className="p-3 bg-paper-50 rounded-lg border border-paper-200 text-xs text-gray-500 font-mono italic">
+                  No certifications listed
+                </div>
               )}
             </div>
           </div>
 
-          {/* 3. Mandatory Skills Matched */}
+          {/* Skill Matching Summary Header */}
+          {evaluation && (
+            <div className="bg-paper-100 p-4 rounded-xl border border-paper-300 flex items-center justify-between">
+              <div>
+                <span className="text-[11px] uppercase font-mono font-bold text-gray-500 block">Total Skills Screened</span>
+                <span className="text-sm font-bold text-ink-900">
+                  {(evaluation.matched_mandatory?.length || 0) + (evaluation.matched_preferred?.length || 0)} / {
+                    (evaluation.matched_mandatory?.length || 0) + (evaluation.missing_mandatory?.length || 0) +
+                    (evaluation.matched_preferred?.length || 0) + (evaluation.missing_preferred?.length || 0)
+                  } Skills Matched
+                </span>
+              </div>
+              <div className="text-right">
+                <span className="text-[11px] uppercase font-mono font-bold text-gray-500 block">Skill Match Score</span>
+                <span className="text-lg font-bold font-serif text-amber-brand">
+                  {evaluation.match_percentage}%
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* 3a. Matched Mandatory Skills */}
           <div className="bg-white p-5 rounded-xl border border-paper-200 shadow-sm">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-ink-900 mb-3 flex items-center gap-2">
-              <CheckCircle className="w-4 h-4 text-emerald-brand" /> Matched Mandatory Skills ({evaluation?.matched_mandatory.length || 0})
+            <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-800 mb-3 flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-emerald-600" /> Matched Mandatory Skills ({evaluation?.matched_mandatory?.length || 0})
             </h3>
             <div className="space-y-3">
-              {evaluation?.matched_mandatory.map((match, idx) => (
-                <div key={idx} className="p-3 bg-emerald-light/40 border border-emerald-brand/30 rounded-lg">
+              {evaluation?.matched_mandatory?.map((match, idx) => (
+                <div key={idx} className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-lg">
                   <div className="flex justify-between items-center mb-1">
-                    <span className="text-xs font-bold text-emerald-900">{match.skill}</span>
-                    <span className="text-[10px] font-mono text-emerald-700 bg-white px-2 py-0.5 rounded border border-emerald-200">
+                    <span className="text-xs font-bold text-emerald-900">✓ {match.skill}</span>
+                    <span className="text-[10px] font-mono text-emerald-700 bg-white px-2 py-0.5 rounded border border-emerald-200 font-semibold">
                       Match: {(match.similarity_score * 100).toFixed(0)}%
                     </span>
                   </div>
@@ -393,60 +418,80 @@ export const CandidateDossierDrawer: React.FC<CandidateDossierDrawerProps> = ({
                 </div>
               ))}
               {(!evaluation?.matched_mandatory || evaluation.matched_mandatory.length === 0) && (
-                <div className="text-xs text-gray-400 font-mono italic">No mandatory skills matched</div>
+                <div className="text-xs text-gray-400 font-mono italic p-2 bg-paper-50 rounded">No mandatory skills matched</div>
               )}
             </div>
           </div>
 
-          {/* 3b. Preferred / Optional Skills Matched */}
-          {evaluation?.matched_preferred && evaluation.matched_preferred.length > 0 && (
-            <div className="bg-white p-5 rounded-xl border border-paper-200 shadow-sm">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-ink-900 mb-3 flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-indigo-600" /> Matched Optional / Preferred Skills ({evaluation.matched_preferred.length})
-              </h3>
-              <div className="space-y-3">
-                {evaluation.matched_preferred.map((match, idx) => (
-                  <div key={idx} className="p-3 bg-indigo-50/50 border border-indigo-200 rounded-lg">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-xs font-bold text-indigo-900">{match.skill}</span>
-                      <span className="text-[10px] font-mono text-indigo-700 bg-white px-2 py-0.5 rounded border border-indigo-200">
-                        Bonus Match: {(match.similarity_score * 100).toFixed(0)}%
-                      </span>
-                    </div>
-                    <p className="text-xs font-serif italic text-gray-700 bg-white p-2 rounded border border-indigo-100">
-                      "{match.evidence_text}"
-                    </p>
-                    <span className="text-[10px] font-mono text-gray-400 mt-1 block">Resume Evidence Source: {match.source_location}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 4. Missing Skills */}
+          {/* 3b. Matched Optional Skills */}
           <div className="bg-white p-5 rounded-xl border border-paper-200 shadow-sm">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-ink-900 mb-3 flex items-center gap-2 text-red-600">
-              <XCircle className="w-4 h-4 text-red-500" /> Missing Skills
+            <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-900 mb-3 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-indigo-600" /> Matched Optional Skills ({evaluation?.matched_preferred?.length || 0})
+            </h3>
+            <div className="space-y-3">
+              {evaluation?.matched_preferred?.map((match, idx) => (
+                <div key={idx} className="p-3 bg-indigo-50/50 border border-indigo-200 rounded-lg">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-xs font-bold text-indigo-900">✓ {match.skill}</span>
+                    <span className="text-[10px] font-mono text-indigo-700 bg-white px-2 py-0.5 rounded border border-indigo-200 font-semibold">
+                      Bonus Match: {(match.similarity_score * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <p className="text-xs font-serif italic text-gray-700 bg-white p-2 rounded border border-indigo-100">
+                    "{match.evidence_text}"
+                  </p>
+                  <span className="text-[10px] font-mono text-gray-400 mt-1 block">Resume Evidence Source: {match.source_location}</span>
+                </div>
+              ))}
+              {(!evaluation?.matched_preferred || evaluation.matched_preferred.length === 0) && (
+                <div className="text-xs text-gray-400 font-mono italic p-2 bg-paper-50 rounded">No optional skills matched</div>
+              )}
+            </div>
+          </div>
+
+          {/* 4a. Missing Mandatory Skills */}
+          <div className="bg-white p-5 rounded-xl border border-paper-200 shadow-sm">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-red-700 mb-3 flex items-center gap-2">
+              <XCircle className="w-4 h-4 text-red-500" /> Missing Mandatory Skills ({evaluation?.missing_mandatory?.length || 0})
             </h3>
             <div className="space-y-2">
               {evaluation?.missing_mandatory?.map((skill, idx) => (
-                <div key={idx} className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 text-red-800 text-xs">
+                <div key={idx} className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 text-red-900 text-xs">
                   <XCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
                   <div>
-                    <span className="font-bold">Missing Required Skill: {skill}</span>
-                    <p className="text-[11px] text-red-600 mt-0.5">No matching text evidence found in candidate resume.</p>
+                    <span className="font-bold">✗ {skill}</span>
+                    <p className="text-[11px] text-red-600 mt-0.5 font-mono">No reliable evidence found in candidate resume.</p>
                   </div>
                 </div>
               ))}
+              {(!evaluation?.missing_mandatory || evaluation.missing_mandatory.length === 0) && (
+                <div className="text-xs text-emerald-700 font-mono flex items-center gap-1.5 p-2 bg-emerald-50 rounded-lg border border-emerald-200">
+                  <CheckCircle className="w-4 h-4 text-emerald-500" /> All mandatory skills verified
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 4b. Missing Optional Skills */}
+          <div className="bg-white p-5 rounded-xl border border-paper-200 shadow-sm">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-amber-900 mb-3 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600" /> Missing Optional Skills ({evaluation?.missing_preferred?.length || 0})
+            </h3>
+            <div className="space-y-2">
               {evaluation?.missing_preferred?.map((skill, idx) => (
-                <div key={idx} className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-xs">
-                  <span className="font-semibold">Missing Preferred Skill: {skill}</span>
+                <div key={idx} className="p-3 bg-amber-50/70 border border-amber-200 rounded-lg flex items-start gap-2 text-amber-900 text-xs">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <span className="font-bold">✗ {skill}</span>
+                    <p className="text-[11px] text-amber-700 mt-0.5 font-mono">No reliable evidence found in candidate resume.</p>
+                  </div>
                 </div>
               ))}
-              {(!evaluation?.missing_mandatory || evaluation.missing_mandatory.length === 0) &&
-                (!evaluation?.missing_preferred || evaluation.missing_preferred.length === 0) && (
-                  <div className="text-xs text-emerald-600 font-mono">100% Skills Verified — Zero Skill Gaps Detected</div>
-                )}
+              {(!evaluation?.missing_preferred || evaluation.missing_preferred.length === 0) && (
+                <div className="text-xs text-emerald-700 font-mono flex items-center gap-1.5 p-2 bg-emerald-50 rounded-lg border border-emerald-200">
+                  <CheckCircle className="w-4 h-4 text-emerald-500" /> All optional skills verified
+                </div>
+              )}
             </div>
           </div>
 

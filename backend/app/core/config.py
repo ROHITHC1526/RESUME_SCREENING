@@ -1,27 +1,58 @@
-import os
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pathlib import Path
 from typing import Optional
 
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+# Project root:
+# RESUME PRO @/
+# ├── .env
+# ├── backend/
+# └── frontend/
+BASE_DIR = Path(__file__).resolve().parents[3]
+
+
 class Settings(BaseSettings):
+
     PROJECT_NAME: str = "Agentic AI Resume Screening & Candidate Ranking System"
+
     ENV: str = "development"
-    SECRET_KEY: str = "super-secret-jwt-key-change-in-production-min-32-chars-long"
+
+    SECRET_KEY: str
+
     ALGORITHM: str = "HS256"
+
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
-    # DB - Defaults to SQLite for immediate run, PostgreSQL supported via env var
-    DATABASE_URL: str = "sqlite+aiosqlite:///./resume_ai.db"
-    REDIS_URL: str = "redis://localhost:6379/0"
+    # PostgreSQL
+    DATABASE_URL: str
 
-    # LLM & Embeddings
-    LLM_PROVIDER: str = "mock"  # mock, openai, anthropic
+    # Redis
+    REDIS_URL: str
+
+    # AI
+    LLM_PROVIDER: str = "gemini"
+
+    GEMINI_API_KEY: Optional[str] = None
+
+    GEMINI_MODEL: str = "gemini-3.6-flash"
+
     OPENAI_API_KEY: Optional[str] = None
+
     ANTHROPIC_API_KEY: Optional[str] = None
 
+    # Vector DB
     CHROMA_PERSIST_DIRECTORY: str = "./chroma_db"
+
     EMBEDDING_MODEL_NAME: str = "all-MiniLM-L6-v2"
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=BASE_DIR / ".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
 
 settings = Settings()

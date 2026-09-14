@@ -7,6 +7,7 @@ import { CandidateDossierDrawer } from '../components/dashboard/CandidateDossier
 import { Job, Candidate } from '../types';
 import { api } from '../services/api';
 import { JobUploadWizard } from '../components/dashboard/JobUploadWizard';
+import { InfinityLoader } from '../components/common/InfinityLoader';
 import { useAuthStore } from '../store/authStore';
 
 export const JobDetailPage: React.FC = () => {
@@ -25,6 +26,8 @@ export const JobDetailPage: React.FC = () => {
   const [editTitle, setEditTitle] = useState('');
   const [editRawJd, setEditRawJd] = useState('');
   const [editMinExp, setEditMinExp] = useState(0);
+  const [editMandatorySkills, setEditMandatorySkills] = useState('');
+  const [editPreferredSkills, setEditPreferredSkills] = useState('');
   const [rescreenChoice, setRescreenChoice] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -46,6 +49,8 @@ export const JobDetailPage: React.FC = () => {
       setEditTitle(jobRes.data.title);
       setEditRawJd(jobRes.data.raw_jd_text);
       setEditMinExp(jobRes.data.min_experience_years);
+      setEditMandatorySkills((jobRes.data.mandatory_skills || []).join(', '));
+      setEditPreferredSkills((jobRes.data.preferred_skills || []).join(', '));
     } catch (err) {
       console.error(err);
     } finally {
@@ -62,9 +67,13 @@ export const JobDetailPage: React.FC = () => {
     if (!jobId) return;
     setSavingEdit(true);
     try {
+      const mandList = editMandatorySkills.split(',').map(s => s.trim()).filter(Boolean);
+      const prefList = editPreferredSkills.split(',').map(s => s.trim()).filter(Boolean);
       await api.patch(`/jobs/${jobId}`, {
         title: editTitle,
         raw_jd_text: editRawJd,
+        mandatory_skills: mandList,
+        preferred_skills: prefList,
         min_experience_years: editMinExp,
         rescreen_candidates: rescreenChoice
       });
@@ -163,21 +172,39 @@ export const JobDetailPage: React.FC = () => {
                   </p>
                 </div>
 
-                <div className="flex flex-wrap gap-2 items-center">
-                  <span className="text-xs font-semibold text-paper-300">Extracted Mandatory Skills:</span>
-                  {job.mandatory_skills?.map((s, i) => (
-                    <span key={i} className="px-2.5 py-0.5 bg-ink-800 border border-ink-700 text-amber-brand text-xs font-mono rounded-md">
-                      {s}
-                    </span>
-                  ))}
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-2 items-center">
+                    <span className="text-xs font-semibold text-paper-300">Mandatory Skills ({job.mandatory_skills?.length || 0}):</span>
+                    {job.mandatory_skills?.map((s, i) => (
+                      <span key={i} className="px-2.5 py-0.5 bg-amber-500/20 border border-amber-500/40 text-amber-brand text-xs font-mono rounded-md font-semibold">
+                        {s}
+                      </span>
+                    ))}
+                    {(!job.mandatory_skills || job.mandatory_skills.length === 0) && (
+                      <span className="text-xs text-paper-400 italic">None configured</span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 items-center">
+                    <span className="text-xs font-semibold text-paper-300">Optional / Preferred Skills ({job.preferred_skills?.length || 0}):</span>
+                    {job.preferred_skills?.map((s, i) => (
+                      <span key={i} className="px-2.5 py-0.5 bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 text-xs font-mono rounded-md font-semibold">
+                        {s}
+                      </span>
+                    ))}
+                    {(!job.preferred_skills || job.preferred_skills.length === 0) && (
+                      <span className="text-xs text-paper-400 italic">None configured</span>
+                    )}
+                  </div>
                 </div>
               </div>
 
               <button
                 onClick={() => setShowUploadWizard(!showUploadWizard)}
-                className="py-3 px-5 bg-amber-brand hover:bg-amber-hover text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-lg transition-all flex items-center gap-2 flex-shrink-0"
+                className="btn-animated-upload py-3 px-5 text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-lg flex items-center gap-2 flex-shrink-0 group"
               >
-                <Upload className="w-4 h-4" /> {showUploadWizard ? 'Hide Resume Upload' : 'Upload More Resumes'}
+                <Upload className="w-4 h-4 group-hover:-translate-y-0.5 transition-transform animate-float-slow" />
+                <span>{showUploadWizard ? 'Hide Resume Upload' : 'Upload More Resumes'}</span>
               </button>
             </div>
           </div>
@@ -189,7 +216,13 @@ export const JobDetailPage: React.FC = () => {
 
         {/* Candidate Leaderboard */}
         {loading ? (
-          <div className="p-12 text-center text-gray-500 font-mono text-xs">Evaluating candidate pool...</div>
+          <div className="py-20 flex justify-center">
+            <InfinityLoader
+              size="lg"
+              message="Evaluating Candidate Leaderboard..."
+              submessage="Aggregating vector similarity rankings and candidate evidence dossiers..."
+            />
+          </div>
         ) : (
           <CandidateLeaderboard
             candidates={candidates}
@@ -217,6 +250,28 @@ export const JobDetailPage: React.FC = () => {
                 </div>
 
                 <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-ink-900 mb-1">Mandatory Skills (Comma separated)</label>
+                  <input
+                    type="text"
+                    value={editMandatorySkills}
+                    onChange={(e) => setEditMandatorySkills(e.target.value)}
+                    placeholder="e.g. Python, React, MongoDB, SQL"
+                    className="w-full p-2.5 bg-paper-50 border border-paper-300 rounded-xl text-xs font-mono text-ink-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-ink-900 mb-1">Optional / Preferred Skills (Comma separated)</label>
+                  <input
+                    type="text"
+                    value={editPreferredSkills}
+                    onChange={(e) => setEditPreferredSkills(e.target.value)}
+                    placeholder="e.g. Docker, AWS, Node.js, Redis"
+                    className="w-full p-2.5 bg-paper-50 border border-paper-300 rounded-xl text-xs font-mono text-ink-900"
+                  />
+                </div>
+
+                <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-ink-900 mb-1">Min Experience (Years)</label>
                   <input
                     type="number"
@@ -230,7 +285,7 @@ export const JobDetailPage: React.FC = () => {
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-ink-900 mb-1">Raw Job Description Text</label>
                   <textarea
-                    rows={6}
+                    rows={5}
                     value={editRawJd}
                     onChange={(e) => setEditRawJd(e.target.value)}
                     className="w-full p-2.5 bg-paper-50 border border-paper-300 rounded-xl text-xs font-mono text-ink-900"

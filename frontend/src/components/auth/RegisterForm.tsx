@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { User as UserIcon, Mail, Lock, Shield, ArrowRight, AlertCircle, Check } from 'lucide-react';
+import { User as UserIcon, Mail, Lock, Shield, ArrowRight, AlertCircle, Loader2 } from 'lucide-react';
 import { api } from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
 
@@ -58,126 +58,136 @@ export const RegisterForm: React.FC = () => {
   return (
     <div>
       {error && (
-        <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 flex items-start gap-3 text-red-700 text-sm">
-          <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+        <div className="mb-4 p-3.5 rounded-xl bg-red-950/60 border border-red-500/40 flex items-start gap-3 text-red-200 text-xs">
+          <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-red-400" />
           <div>{error}</div>
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-3.5">
         <div>
-          <label className="block text-xs font-semibold text-ink-900 uppercase tracking-wider mb-1.5">
+          <label className="block text-xs font-semibold text-paper-200 uppercase tracking-wider mb-1 font-mono">
             Full Name
           </label>
           <div className="relative">
-            <UserIcon className="w-5 h-5 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <UserIcon className="w-4 h-4 text-paper-300/60 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               required
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               placeholder="Sarah Jenkins"
-              className="w-full pl-11 pr-4 py-2.5 bg-paper-50 border border-paper-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-brand text-ink-900 text-sm"
+              className="w-full pl-10 pr-4 py-2.5 bg-ink-900/90 border border-ink-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-brand text-white text-xs placeholder:text-gray-500 transition-all shadow-inner"
             />
           </div>
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-ink-900 uppercase tracking-wider mb-1.5">
+          <label className="block text-xs font-semibold text-paper-200 uppercase tracking-wider mb-1 font-mono">
             Work Email Address
           </label>
           <div className="relative">
-            <Mail className="w-5 h-5 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <Mail className="w-4 h-4 text-paper-300/60 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="s.jenkins@company.com"
-              className="w-full pl-11 pr-4 py-2.5 bg-paper-50 border border-paper-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-brand text-ink-900 text-sm"
+              className="w-full pl-10 pr-4 py-2.5 bg-ink-900/90 border border-ink-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-brand text-white text-xs placeholder:text-gray-500 transition-all shadow-inner"
             />
           </div>
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-ink-900 uppercase tracking-wider mb-1.5">
-            Role Type
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => setRole('recruiter')}
-              className={`p-2.5 rounded-xl border text-xs font-medium flex items-center justify-center gap-2 transition-all ${
-                role === 'recruiter'
-                  ? 'bg-amber-light border-amber-brand text-amber-brand shadow-sm font-semibold'
-                  : 'bg-paper-50 border-paper-300 text-gray-600 hover:border-gray-400'
-              }`}
-            >
-              <UserIcon className="w-4 h-4" /> Technical Recruiter
-            </button>
-            <button
-              type="button"
-              onClick={() => setRole('admin')}
-              className={`p-2.5 rounded-xl border text-xs font-medium flex items-center justify-center gap-2 transition-all ${
-                role === 'admin'
-                  ? 'bg-ink-900 border-ink-900 text-paper-50 shadow-sm font-semibold'
-                  : 'bg-paper-50 border-paper-300 text-gray-600 hover:border-gray-400'
-              }`}
-            >
-              <Shield className="w-4 h-4" /> Hiring Admin
-            </button>
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-xs font-semibold text-ink-900 uppercase tracking-wider mb-1.5">
+          <label className="block text-xs font-semibold text-paper-200 uppercase tracking-wider mb-1 font-mono">
             Password
           </label>
           <div className="relative">
-            <Lock className="w-5 h-5 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <Lock className="w-4 h-4 text-paper-300/60 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Minimum 8 characters"
-              className="w-full pl-11 pr-4 py-2.5 bg-paper-50 border border-paper-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-brand text-ink-900 text-sm"
+              placeholder="••••••••••••"
+              className="w-full pl-10 pr-4 py-2.5 bg-ink-900/90 border border-ink-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-brand text-white text-xs placeholder:text-gray-500 transition-all shadow-inner"
             />
           </div>
 
-          {/* Password Strength Meter */}
+          {/* Strength Indicator */}
           {password && (
-            <div className="mt-2 space-y-1">
-              <div className="flex gap-1 h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
-                <div className={`h-full transition-all ${strength >= 1 ? 'w-1/4 bg-red-400' : ''}`} />
-                <div className={`h-full transition-all ${strength >= 2 ? 'w-1/4 bg-amber-400' : ''}`} />
-                <div className={`h-full transition-all ${strength >= 3 ? 'w-1/4 bg-blue-400' : ''}`} />
-                <div className={`h-full transition-all ${strength >= 4 ? 'w-1/4 bg-emerald-brand' : ''}`} />
-              </div>
-              <p className="text-[11px] text-gray-500 font-mono">
-                Strength: {['Weak', 'Fair', 'Good', 'Strong'][Math.max(0, strength - 1)] || 'Weak'}
-              </p>
+            <div className="mt-1.5 flex gap-1">
+              {[1, 2, 3, 4].map((level) => (
+                <div
+                  key={level}
+                  className={`h-1 flex-1 rounded-full transition-colors ${
+                    strength >= level
+                      ? level <= 1
+                        ? 'bg-red-400'
+                        : level <= 2
+                        ? 'bg-amber-400'
+                        : 'bg-emerald-400'
+                      : 'bg-ink-700'
+                  }`}
+                />
+              ))}
             </div>
           )}
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-paper-200 uppercase tracking-wider mb-1 font-mono">
+            Organization Role
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setRole('recruiter')}
+              className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+                role === 'recruiter'
+                  ? 'bg-amber-brand/20 border-amber-brand text-amber-300 shadow-sm'
+                  : 'bg-ink-900/60 border-ink-700 text-gray-400 hover:text-white'
+              }`}
+            >
+              <UserIcon className="w-3.5 h-3.5" /> Recruiter
+            </button>
+            <button
+              type="button"
+              onClick={() => setRole('admin')}
+              className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+                role === 'admin'
+                  ? 'bg-amber-brand/20 border-amber-brand text-amber-300 shadow-sm'
+                  : 'bg-ink-900/60 border-ink-700 text-gray-400 hover:text-white'
+              }`}
+            >
+              <Shield className="w-3.5 h-3.5" /> Admin
+            </button>
+          </div>
         </div>
 
         <button
           type="submit"
           disabled={loading}
-          className="w-full mt-2 py-3 px-6 bg-amber-brand hover:bg-amber-hover text-white font-medium text-sm rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 group disabled:opacity-50"
+          className="w-full mt-3 py-3 px-6 bg-gradient-to-r from-amber-brand to-amber-hover hover:from-amber-500 hover:to-amber-brand text-ink-900 font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg hover:shadow-amber-brand/30 transition-all flex items-center justify-center gap-2 group disabled:opacity-50"
         >
-          {loading ? 'Creating Account...' : (
+          {loading ? (
             <>
-              Register Recruiter Profile
+              <Loader2 className="w-4 h-4 animate-spin text-ink-900" />
+              <span>Creating Account...</span>
+            </>
+          ) : (
+            <>
+              <span>Create Recruiter Account</span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </>
           )}
         </button>
       </form>
 
-      <div className="mt-6 pt-4 border-t border-paper-200 text-center text-sm text-gray-600">
-        Already registered?{' '}
-        <Link to="/login" className="text-ink-900 hover:underline font-semibold">
+      <div className="mt-5 pt-4 border-t border-ink-700/60 text-center text-xs text-paper-300">
+        Already have an account?{' '}
+        <Link to="/login" className="text-amber-brand hover:text-amber-300 font-bold transition-colors">
           Sign In
         </Link>
       </div>

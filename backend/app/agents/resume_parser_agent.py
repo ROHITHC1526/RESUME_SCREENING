@@ -1,8 +1,87 @@
 import re
+from typing import List, Any, Dict
 from app.agents.state import PipelineState
 from app.services.pii_redactor import PIIRedactor
 from app.services.llm_provider import get_llm_provider
 from app.services.vector_store import VectorStore
+
+def extract_structured_education(text: str, llm_extracted: List[Any]) -> List[str]:
+    results = []
+    
+    # 1. Add valid LLM extracted items
+    for item in (llm_extracted or []):
+        clean = str(item).strip()
+        if clean and len(clean) > 3:
+            clean = re.sub(r'\[.*?\]', '', clean).strip()
+            clean = re.sub(r'[\s,;:\|]+$', '', clean).strip()
+            if clean and not any(clean.lower() == r.lower() for r in results):
+                results.append(clean)
+                
+    # 2. Degree + Major / Specialization Regex
+    degree_regex = re.compile(
+        r'\b(?:B\.?\s*Tech(?:\.?|\b)|BTech\b|B\.?\s*E\.?\b|Bachelor(?:\'s)?(?:\s+of\s+[A-Za-z]+)?|B\.?\s*Sc\.?\b|BSc\b|B\.?\s*S\.?\b|BCA\b|B\.?\s*Com\b|B\.?\s*A\.?\b|'
+        r'M\.?\s*Tech(?:\.?|\b)|MTech\b|M\.?\s*E\.?\b|Master(?:\'s)?(?:\s+of\s+[A-Za-z]+)?|M\.?\s*Sc\.?\b|MSc\b|M\.?\s*S\.?\b|MCA\b|MBA\b|'
+        r'Ph\.?D\b|Doctorate\b|Diploma\b|Intermediate\b|Higher\s+Secondary\b|Senior\s+Secondary\b|12th(?:\s+Grade|\s+Class)?|10th(?:\s+Grade|\s+Class)?)'
+        r'(?:\s+(?:in|[-–—:]|\/|\()?\s*[A-Za-z0-9\s&/\(\)\.-]+?(?=\s*(?:\[|\n|,|;|\.|$|learning|skilled|experience|cgpa|gpa|\b20\d\d\b)))?',
+        re.IGNORECASE
+    )
+
+    # 3. College / University / Institute / School Regex
+    univ_regex = re.compile(
+        r'([^\n,;]*?(?:University|College|Institute|Academy|School|Vidyalaya|Autonomous)[^\n]*)',
+        re.IGNORECASE
+    )
+
+    # Scan for degrees
+    for m in degree_regex.finditer(text):
+        deg = m.group(0).strip()
+        deg = re.sub(r'\[.*?\]', '', deg).strip()
+        deg = re.sub(r'[\s,;:\|]+$', '', deg).strip()
+        if len(deg) >= 3 and not any(k in deg.lower() for k in ['learning', 'skilled', 'experience', 'react', 'python', 'java', 'sql']):
+            if not any(deg.lower() in r.lower() or r.lower() in deg.lower() for r in results):
+                results.append(deg)
+
+    # Scan for universities / colleges
+    for m in univ_regex.finditer(text):
+        univ = m.group(0).strip()
+        univ = re.sub(r'\[.*?\]', '', univ).strip()
+        univ = re.sub(r'[\s,;:\|]+$', '', univ).strip()
+        if 6 <= len(univ) <= 150 and not any(k in univ.lower() for k in ['learning', 'skilled', 'experience', 'react', 'python', 'java']):
+            if not any(univ.lower() in r.lower() or r.lower() in univ.lower() for r in results):
+                results.append(univ)
+
+    return results
+
+
+def extract_structured_certifications(text: str, llm_extracted: List[Any]) -> List[str]:
+    results = []
+    
+    # 1. Add valid LLM extracted items
+    for item in (llm_extracted or []):
+        clean = str(item).strip()
+        if clean and len(clean) > 3:
+            clean = re.sub(r'\[.*?\]', '', clean).strip()
+            clean = re.sub(r'[\s,;:\|]+$', '', clean).strip()
+            if clean and not any(clean.lower() == r.lower() for r in results):
+                results.append(clean)
+                
+    # 2. Certifications Pattern
+    cert_regex = re.compile(
+        r'(?:AWS|Amazon\s*Web\s*Services|Azure|Microsoft|Google\s+Cloud|GCP|Oracle|Cisco|Red\s*Hat|Docker|Kubernetes|CKA|CKAD|PMP|Scrum\s*Master|Certified|Certification|Coursera|Udemy|HackerRank|NPTEL|CompTIA)'
+        r'[^\n,;]*(?:Certified|Practitioner|Associate|Professional|Specialist|Developer|Architect|Master|Administrator|Certification|Course|Credentials|\d{4})[^\n,;\|]*',
+        re.IGNORECASE
+    )
+
+    for m in cert_regex.finditer(text):
+        cert = m.group(0).strip()
+        cert = re.sub(r'\[.*?\]', '', cert).strip()
+        cert = re.sub(r'[\s,;:\|]+$', '', cert).strip()
+        if len(cert) >= 5 and not any(k in cert.lower() for k in ['experience', 'work history', 'skills']):
+            if not any(cert.lower() in r.lower() or r.lower() in cert.lower() for r in results):
+                results.append(cert)
+
+    return results
+
 
 async def resume_parser_agent(state: PipelineState) -> PipelineState:
     raw_resume = state.get("raw_resume_text", "")
@@ -13,7 +92,6 @@ async def resume_parser_agent(state: PipelineState) -> PipelineState:
 
     # Step 1: PII Redaction constraint (FAIRNESS MANDATE)
     redacted_resume, pii_report = PIIRedactor.redact(raw_resume, candidate_id=candidate_id)
-
 
     # Step 2: LLM Structured parsing over REDACTED text only
     llm = get_llm_provider()
@@ -28,58 +106,38 @@ async def resume_parser_agent(state: PipelineState) -> PipelineState:
     }
     """
 
-    prompt = f"Parse the following redacted resume text and extract skills, work experience, total experience years, education, projects, and certifications:\n\n{redacted_resume}"
+    prompt = (
+        "TASK: Thoroughly parse the following redacted candidate resume and extract all structured attributes.\n\n"
+        "1. SKILLS: Extract ALL technical skills, tools, programming languages, databases, frameworks, libraries, APIs, and platforms.\n"
+        "2. WORK EXPERIENCE: Extract all work experience entries (title, company, duration, responsibilities/achievements).\n"
+        "3. TOTAL EXPERIENCE: Calculate total relevant years of industry/professional experience as a float.\n"
+        "4. EDUCATION (CRITICAL): Extract ALL educational qualifications, degrees, diplomas, high school/intermediate, majors, branches, and colleges/universities. Examples:\n"
+        "   - 'B.Tech in Computer Science and Engineering (AI & ML)', 'B.TECH CSE(AI AND ML)', 'Bachelor of Technology'\n"
+        "   - 'B.E. in Information Technology', 'B.Sc Computer Science', 'MCA', 'M.Tech'\n"
+        "   - Include college/university name, CGPA/marks, and graduation years if present.\n"
+        "   - DO NOT return an empty list if any degree or university is mentioned anywhere in the resume.\n"
+        "5. CERTIFICATIONS (CRITICAL): Extract ALL certifications, licenses, and credentials (e.g. 'AWS Certified Cloud Practitioner - Amazon Web Services (AWS)', 'Azure Fundamentals', 'Google Cloud Certified', 'Docker Certified').\n"
+        "6. PROJECTS: Extract project titles and implementation descriptions.\n\n"
+        f"REDACTED_RESUME_START\n{redacted_resume}\nREDACTED_RESUME_END"
+    )
     extracted = await llm.generate_json(prompt, schema_desc)
 
     # Compute total experience years directly from date ranges / text if present to ensure accuracy
-    exp_years = float(extracted.get("total_experience_years", 0.0))
+    exp_years = float(extracted.get("total_experience_years", 0.0) or 0.0)
     if exp_years == 0.0:
-        matches = re.findall(r'(\d+)\+?\s*years', redacted_resume.lower())
+        matches = re.findall(r'(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)', redacted_resume.lower())
         if matches:
             exp_years = max([float(m) for m in matches])
-        elif "2021" in redacted_resume and ("present" in redacted_resume.lower() or "2024" in redacted_resume or "2026" in redacted_resume):
-            exp_years = 3.0
+        elif "2021" in redacted_resume and any(k in redacted_resume.lower() for k in ["present", "2024", "2025", "2026"]):
+            exp_years = 3.5
 
-    # Step 3: Ensure Education and Certifications recall via keyword fallback scan
-    education_list = extracted.get("education", [])
-    if not isinstance(education_list, list):
-        education_list = [str(education_list)] if education_list else []
-
-    certifications_list = extracted.get("certifications", [])
-    if not isinstance(certifications_list, list):
-        certifications_list = [str(certifications_list)] if certifications_list else []
-
-    edu_keywords = [
-        r'\bb\.?\s*tech\b', r'\bb\.?\s*e\.?\b', r'\bb\.?\s*s\.?\b', r'\bm\.?\s*s\.?\b',
-        r'\bbachelor\b', r'\bmaster\b', r'\bphd\b', r'\bdoctorate\b', r'\bdegree\b',
-        r'\buniversity\b', r'\bcollege\b', r'\binstitute\b', r'\bdiploma\b',
-        r'\bb\.?\s*c\.?\s*a\b', r'\bm\.?\s*c\.?\s*a\b', r'\bb\.?\s*sc\b', r'\bm\.?\s*sc\b',
-        r'\bhigher secondary\b', r'\bschool\b'
-    ]
-
-    cert_keywords = [
-        r'\bcertifi(ed|cate|cation)\b', r'\baws\b', r'\bazure\b', r'\bgcp\b',
-        r'\bcoursera\b', r'\budemy\b', r'\boracle\b', r'\bcisco\b', r'\bscrum\b',
-        r'\bpmp\b', r'\bred hat\b', r'\bcomptia\b', r'\bkubernetes\b', r'\bdocker\b',
-        r'\bhashicorp\b', r'\blean six sigma\b'
-    ]
-
-    combined_lines = [l.strip() for l in (raw_resume + "\n" + redacted_resume).split('\n') if l.strip()]
-    for line_clean in combined_lines:
-        if len(line_clean) < 4 or len(line_clean) > 150:
-            continue
-
-        if any(re.search(kw, line_clean, re.IGNORECASE) for kw in edu_keywords):
-            if not any(line_clean.lower() in existing.lower() or existing.lower() in line_clean.lower() for existing in education_list):
-                education_list.append(line_clean)
-
-        if any(re.search(kw, line_clean, re.IGNORECASE) for kw in cert_keywords):
-            if not any(line_clean.lower() in existing.lower() or existing.lower() in line_clean.lower() for existing in certifications_list):
-                certifications_list.append(line_clean)
+    # Step 3: Clean & enhance Education and Certifications lists from both LLM extraction and text patterns
+    combined_text = (raw_resume + "\n" + redacted_resume).strip()
+    education_list = extract_structured_education(combined_text, extracted.get("education", []))
+    certifications_list = extract_structured_certifications(combined_text, extracted.get("certifications", []))
 
     # Step 4: Embed resume chunks into vector store for RAG semantic search
-    job_id = state.get("job_id", "default_job")
-    vector_store = VectorStore(collection_name=f"resume_{job_id}")
+    vector_store = VectorStore(collection_name=f"resume_{candidate_id}")
 
     lines = [line.strip() for line in redacted_resume.split("\n") if line.strip()]
     chunks = []

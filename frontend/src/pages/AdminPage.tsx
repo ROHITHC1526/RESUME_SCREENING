@@ -4,6 +4,7 @@ import { ShieldCheck, Users, Briefcase, Award, History, Plus, CheckCircle, XCirc
 import { Navbar } from '../components/dashboard/Navbar';
 import { JobUploadWizard } from '../components/dashboard/JobUploadWizard';
 import { CandidateDossierDrawer } from '../components/dashboard/CandidateDossierDrawer';
+import { InfinityLoader } from '../components/common/InfinityLoader';
 import { RecruiterUser, OrgJob, AuditLogEntry, Candidate } from '../types';
 import { api } from '../services/api';
 
@@ -235,8 +236,18 @@ export const AdminPage: React.FC = () => {
           </button>
         </div>
 
-        {/* TAB 1: APPROVAL QUEUE */}
-        {activeTab === 'approvals' && (
+        {loading ? (
+          <div className="py-24 flex justify-center">
+            <InfinityLoader
+              size="lg"
+              message="Loading Admin Control Center..."
+              submessage="Aggregating pending approvals, active recruiter accounts, and security audit logs..."
+            />
+          </div>
+        ) : (
+          <>
+            {/* TAB 1: APPROVAL QUEUE */}
+            {activeTab === 'approvals' && (
           <div className="space-y-6">
             <div className="bg-white p-4 rounded-xl border border-paper-200 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
@@ -661,6 +672,8 @@ export const AdminPage: React.FC = () => {
             </div>
           </div>
         )}
+        </>
+      )}
 
         {/* Candidate Dossier Drawer Trigger from Approval Queue */}
         {selectedCandidate && selectedJobId && (

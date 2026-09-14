@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Briefcase, Plus, Users, ChevronRight, Sparkles, Trash2, AlertTriangle } from 'lucide-react';
 import { Navbar } from '../components/dashboard/Navbar';
 import { JobUploadWizard } from '../components/dashboard/JobUploadWizard';
+import { InfinityLoader } from '../components/common/InfinityLoader';
 import { Job } from '../types';
 import { api } from '../services/api';
 import { useAuthStore } from '../store/authStore';
@@ -74,9 +75,9 @@ export const JobsPage: React.FC = () => {
 
           <button
             onClick={() => setShowWizard(!showWizard)}
-            className="py-3 px-5 bg-amber-brand hover:bg-amber-hover text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-md transition-all flex items-center gap-2"
+            className="btn-animated-upload py-3 px-5 text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-lg flex items-center gap-2 group"
           >
-            <Plus className="w-4 h-4" /> {showWizard ? 'Close Wizard' : 'Post New Job Posting'}
+            <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" /> {showWizard ? 'Close Wizard' : 'Post New Job Posting'}
           </button>
         </div>
 
@@ -91,7 +92,13 @@ export const JobsPage: React.FC = () => {
 
         {/* Job List */}
         {loading ? (
-          <div className="p-12 text-center text-gray-500 font-mono text-xs">Loading job postings...</div>
+          <div className="py-24 flex justify-center">
+            <InfinityLoader
+              size="lg"
+              message="Loading Active Job Pipelines..."
+              submessage="Fetching real-time candidate pools and requirement schemas..."
+            />
+          </div>
         ) : jobs.length === 0 ? (
           <div className="bg-white border border-paper-200 rounded-2xl p-12 text-center shadow-sm">
             <Briefcase className="w-12 h-12 text-gray-400 mx-auto mb-3" />

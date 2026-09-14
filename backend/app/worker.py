@@ -70,7 +70,7 @@ async def process_resume_batch_task(ctx: dict, job_id: str, file_items: List[Dic
                     # Invoke LangGraph pipeline
                     initial_state = {
                         "job_id": job_id,
-                        "candidate_id": f"cand_{job_id[:6]}_{TASK_STATUSES[task_id]['processed']+1}",
+                        "candidate_id": f"cand_{uuid.uuid4().hex[:10]}",
                         "raw_jd_text": job.raw_jd_text,
                         "raw_resume_text": raw_text,
                         "mandatory_skills": job.mandatory_skills or [],

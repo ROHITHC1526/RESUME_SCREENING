@@ -8,8 +8,15 @@ from app.db.session import get_db
 from app.models.models import Job, Candidate, User, AuditLog
 from app.api.deps import get_current_user
 from app.agents.jd_agent import job_description_agent
+from app.worker import TASK_STATUSES
 
 router = APIRouter(prefix="/api/jobs", tags=["Jobs"])
+
+@router.get("/tasks/{task_id}/progress")
+async def get_job_task_progress(task_id: str):
+    if task_id not in TASK_STATUSES:
+        return {"status": "completed", "processed": 1, "total": 1}
+    return TASK_STATUSES[task_id]
 
 class AnalyzeJDRequest(BaseModel):
     raw_jd_text: str

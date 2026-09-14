@@ -7,11 +7,52 @@
     background-color: #FAF7F0;
     color: #0B1220;
     font-family: 'Inter', sans-serif;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
+  .dark body,
+  html.dark body {
+    background-color: #0B1220;
+    color: #FAF7F0;
   }
 
   h1, h2, h3, .font-editorial {
     font-family: 'Fraunces', Georgia, serif;
   }
+}
+
+/* Dynamic Dark Mode overrides for cards & background surfaces */
+.dark .bg-paper-50 {
+  background-color: #0d1527 !important;
+  color: #f1f5f9 !important;
+}
+
+.dark .bg-paper-100 {
+  background-color: #141e33 !important;
+  color: #f1f5f9 !important;
+}
+
+.dark .bg-white {
+  background-color: #141e33 !important;
+  color: #f1f5f9 !important;
+}
+
+.dark .border-paper-200,
+.dark .border-paper-300 {
+  border-color: #1e2d4a !important;
+}
+
+.dark .text-ink-900 {
+  color: #f8fafc !important;
+}
+
+.dark .text-gray-600,
+.dark .text-gray-700 {
+  color: #94a3b8 !important;
+}
+
+.dark .text-gray-500 {
+  color: #64748b !important;
 }
 
 /* Custom scrollbars for dossier drawers */
@@ -20,12 +61,111 @@
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #FAF7F0;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #CBD5E1;
+  background: #94A3B8;
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94A3B8;
+  background: #64748B;
 }
+
+/* Animated Upload Resume Button */
+.btn-animated-upload {
+  position: relative;
+  background: linear-gradient(135deg, #C97A3D 0%, #E69555 50%, #C97A3D 100%);
+  background-size: 200% auto;
+  box-shadow: 0 4px 15px rgba(201, 122, 61, 0.35);
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  overflow: hidden;
+}
+
+.btn-animated-upload:hover {
+  background-position: right center;
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 8px 25px rgba(201, 122, 61, 0.5), 0 0 15px rgba(230, 149, 85, 0.6);
+}
+
+.btn-animated-upload:active {
+  transform: translateY(1px) scale(0.98);
+}
+
+/* Shimmer overlay beam */
+.btn-animated-upload::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    120deg,
+    transparent,
+    rgba(255, 255, 255, 0.4),
+    transparent
+  );
+  animation: sweep 3s infinite linear;
+}
+
+@keyframes sweep {
+  0% { left: -100%; }
+  40%, 100% { left: 200%; }
+}
+
+/* Lamp String Pull Physics */
+@keyframes pullString {
+  0% { transform: translateY(0); }
+  40% { transform: translateY(18px); }
+  70% { transform: translateY(-4px); }
+  100% { transform: translateY(0); }
+}
+
+.animate-pull {
+  animation: pullString 0.45s ease-out;
+}
+
+/* Light cone glow effect */
+.light-cone-active {
+  background: radial-gradient(
+    ellipse 80% 65% at 75% 25%,
+    rgba(255, 220, 130, 0.22) 0%,
+    rgba(245, 175, 55, 0.08) 45%,
+    rgba(11, 18, 32, 0) 75%
+  );
+}
+
+/* Infinity (∞) Animated Loader */
+.infinity-laser-path,
+.infinity-path-animated {
+  stroke-dasharray: 120 320;
+  stroke-dashoffset: 440;
+  animation: infinityLaserFlow 1.8s linear infinite;
+}
+
+@keyframes infinityLaserFlow {
+  0% {
+    stroke-dashoffset: 440;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+.infinity-spin-3d {
+  animation: infinitySpin 4s ease-in-out infinite alternate;
+}
+
+@keyframes infinitySpin {
+  0% {
+    transform: perspective(300px) rotateY(0deg) rotateZ(0deg);
+  }
+  50% {
+    transform: perspective(300px) rotateY(20deg) rotateZ(4deg) scale(1.03);
+  }
+  100% {
+    transform: perspective(300px) rotateY(-20deg) rotateZ(-4deg);
+  }
+}
+
+

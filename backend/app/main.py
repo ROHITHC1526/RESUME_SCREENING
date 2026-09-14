@@ -43,7 +43,10 @@ app = FastAPI(
 # CORS Middleware setup
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Production environment configures exact Vercel origin
+    allow_origins=[
+    "http://localhost:5173",
+    "https://resume-screening-liard.vercel.app",
+],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

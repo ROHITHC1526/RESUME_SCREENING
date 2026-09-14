@@ -25,3 +25,4 @@ pytest-asyncio>=0.23.4
 httpx>=0.26.0
 google-genai>=1.0.0
 email-validator
+openai>=1.0.0

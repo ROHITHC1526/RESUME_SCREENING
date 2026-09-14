@@ -5,7 +5,9 @@ import os
 import re
 import random
 import asyncio
+from openai import AsyncOpenAI
 from typing import Dict, Any, Optional, List
+
 
 from app.core.config import settings
 
@@ -168,6 +170,111 @@ class GeminiProvider(LLMProvider):
                 f"Gemini generate_text failed "
                 f"({type(e).__name__}: {str(e)[:200]}). "
                 "Invoking semantic fallback."
+            )
+
+            return await self._fallback.generate_text(prompt)
+
+class GroqProvider(LLMProvider):
+    """
+    Groq provider using Groq's OpenAI-compatible API.
+    """
+
+    def __init__(self, api_key: str, model_name: Optional[str] = None):
+        self.client = AsyncOpenAI(
+            api_key=api_key,
+            base_url="https://api.groq.com/openai/v1"
+        )
+
+        self.model = model_name or getattr(
+            settings,
+            "GROQ_MODEL",
+            "openai/gpt-oss-120b"
+        )
+
+        self._fallback = MockLLMProvider()
+
+    async def generate_json(
+        self,
+        prompt: str,
+        schema_description: str
+    ) -> Dict[str, Any]:
+
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                temperature=0.0,
+                response_format={"type": "json_object"},
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are an expert AI recruiting and resume "
+                            "parsing engine. Return ONLY valid JSON matching "
+                            "the following schema:\n"
+                            f"{schema_description}"
+                        )
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ]
+            )
+
+            content = response.choices[0].message.content or "{}"
+
+            clean = re.sub(
+                r'^```(?:json)?\s*',
+                '',
+                content.strip(),
+                flags=re.IGNORECASE
+            )
+
+            clean = re.sub(
+                r'\s*```$',
+                '',
+                clean
+            ).strip()
+
+            return json.loads(clean)
+
+        except Exception as e:
+            logger.error(
+                f"Groq generate_json failed "
+                f"({type(e).__name__}: {str(e)[:200]}). "
+                f"Invoking semantic fallback."
+            )
+
+            return await self._fallback.generate_json(
+                prompt,
+                schema_description
+            )
+
+    async def generate_text(self, prompt: str) -> str:
+
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                temperature=0.0,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an expert AI recruiting assistant."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ]
+            )
+
+            return response.choices[0].message.content or ""
+
+        except Exception as e:
+            logger.error(
+                f"Groq generate_text failed "
+                f"({type(e).__name__}: {str(e)[:200]}). "
+                f"Invoking semantic fallback."
             )
 
             return await self._fallback.generate_text(prompt)
@@ -510,26 +617,74 @@ class MockLLMProvider(LLMProvider):
 _central_llm_provider: Optional[LLMProvider] = None
 
 def get_llm_provider() -> LLMProvider:
-        """
-        Returns the centralized active LLM provider instance configured for the application.
-        Defaults to GeminiProvider with google-genai SDK when configured.
-        """
-        global _central_llm_provider
-        if _central_llm_provider is not None:
-            return _central_llm_provider
+    """
+    Returns the centralized active LLM provider instance configured for the application.
+    Defaults to GeminiProvider with google-genai SDK when configured.
+    """
+    global _central_llm_provider
 
-        provider = (settings.LLM_PROVIDER or "gemini").lower().strip()
-        gemini_key = settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY", "")
-
-        if provider in ["gemini", "google"] and gemini_key:
-            _central_llm_provider = GeminiProvider(api_key=gemini_key, model_name=settings.GEMINI_MODEL)
-        elif provider == "openai" and settings.OPENAI_API_KEY:
-            _central_llm_provider = OpenAIProvider(settings.OPENAI_API_KEY)
-        elif provider == "anthropic" and settings.ANTHROPIC_API_KEY:
-            _central_llm_provider = AnthropicProvider(settings.ANTHROPIC_API_KEY)
-        elif gemini_key:
-            _central_llm_provider = GeminiProvider(api_key=gemini_key, model_name=settings.GEMINI_MODEL)
-        else:
-            _central_llm_provider = MockLLMProvider()
-
+    if _central_llm_provider is not None:
         return _central_llm_provider
+
+    provider = (settings.LLM_PROVIDER or "gemini").lower().strip()
+
+    groq_key = (
+        settings.GROQ_API_KEY
+        or os.environ.get("GROQ_API_KEY", "")
+    )
+
+    gemini_key = (
+        settings.GEMINI_API_KEY
+        or os.environ.get("GEMINI_API_KEY", "")
+    )
+
+    if provider == "groq" and groq_key:
+        _central_llm_provider = GroqProvider(
+            api_key=groq_key,
+            model_name=getattr(
+                settings,
+                "GROQ_MODEL",
+                "openai/gpt-oss-120b"
+            )
+        )
+
+    elif provider in ["gemini", "google"] and gemini_key:
+        _central_llm_provider = GeminiProvider(
+            api_key=gemini_key,
+            model_name=settings.GEMINI_MODEL
+        )
+
+    elif provider == "openai" and settings.OPENAI_API_KEY:
+        _central_llm_provider = OpenAIProvider(
+            settings.OPENAI_API_KEY
+        )
+
+    elif provider == "anthropic" and settings.ANTHROPIC_API_KEY:
+        _central_llm_provider = AnthropicProvider(
+            settings.ANTHROPIC_API_KEY
+        )
+
+    elif groq_key:
+        _central_llm_provider = GroqProvider(
+            api_key=groq_key,
+            model_name=getattr(
+                settings,
+                "GROQ_MODEL",
+                "openai/gpt-oss-120b"
+            )
+        )
+
+    elif gemini_key:
+        _central_llm_provider = GeminiProvider(
+            api_key=gemini_key,
+            model_name=settings.GEMINI_MODEL
+        )
+
+    else:
+        _central_llm_provider = MockLLMProvider()
+
+    logger.info(
+        f"Active LLM provider: {type(_central_llm_provider).__name__}"
+    )
+
+    return _central_llm_provider

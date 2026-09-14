@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     REDIS_URL: str
 
     # AI
-    LLM_PROVIDER: str = "gemini"
+    LLM_PROVIDER: str = "groq"
 
     GEMINI_API_KEY: Optional[str] = None
 
@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
 
     ANTHROPIC_API_KEY: Optional[str] = None
+
+    GROQ_API_KEY: Optional[str] = None
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
 
     # Vector DB
     CHROMA_PERSIST_DIRECTORY: str = "./chroma_db"

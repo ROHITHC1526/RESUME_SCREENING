@@ -52,8 +52,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
     "http://localhost:5173",
-    "https://resume-screening-liard.vercel.app"
-    "https://resume-screening-2totp8vzi-rohithc1526s-projects.vercel.app",
+    "https://resume-screening-liard.vercel.app",
 ],
     allow_credentials=True,
     allow_methods=["*"],

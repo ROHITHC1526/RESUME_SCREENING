@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+import random
 import asyncio
 from typing import Dict, Any, Optional, List
 
@@ -101,7 +102,12 @@ class GeminiProvider(LLMProvider):
                     or "UNAVAILABLE" in error_text
                 ):
                     if attempt < 2:
-                        await asyncio.sleep(2 ** attempt)
+                        wait_time = (10 * (2 ** attempt)) + random.uniform(0, 5)
+                        logger.warning(
+                            f"Gemini temporarily unavailable. "
+                            f"Retrying in {wait_time:.1f} seconds..."
+                        )
+                        await asyncio.sleep(wait_time)
                         continue
 
                 break

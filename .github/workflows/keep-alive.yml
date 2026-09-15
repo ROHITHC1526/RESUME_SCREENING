@@ -1,0 +1,36 @@
+name: Backend Keep-Alive Uptime Ping
+
+on:
+  schedule:
+    # Run every 10 minutes (cron syntax in UTC)
+    - cron: '*/10 * * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+jobs:
+  ping-health:
+    name: Ping Backend Health Endpoint
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    steps:
+      - name: Ping /api/health Endpoint
+        run: |
+          URL="https://resume-screening-qn3r.onrender.com/api/health"
+          echo "Sending lightweight health check to $URL..."
+          
+          # Perform GET request with a 30s timeout
+          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}\nTIME:%{time_total}s" --max-time 30 "$URL")
+          HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS" | cut -d':' -f2)
+          TIME_TOTAL=$(echo "$RESPONSE" | grep "TIME" | cut -d':' -f2)
+          BODY=$(echo "$RESPONSE" | sed '/HTTP_STATUS/d' | sed '/TIME/d')
+          
+          echo "Status: $HTTP_STATUS ($TIME_TOTAL)"
+          echo "Response Body: $BODY"
+          
+          if [ "$HTTP_STATUS" -eq 200 ]; then
+            echo "Backend is alive and healthy."
+            exit 0
+          else
+            echo "Backend health check returned non-200 status ($HTTP_STATUS)."
+            exit 1
+          fi

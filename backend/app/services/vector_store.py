@@ -1,46 +1,71 @@
 import os
-from typing import List, Dict, Any, Optional
 import math
+import re
+from difflib import SequenceMatcher
+from typing import List, Dict, Any, Optional
 
 
 class VectorStore:
     """
-    Vector Store wrapper supporting ChromaDB with lazy initialization.
+    Memory-safe vector store.
 
-    Memory optimization:
-    - ChromaDB is initialized only when required.
-    - SentenceTransformer is loaded lazily.
-    - A single shared SentenceTransformer instance is reused by all
-      VectorStore objects in the same Python process.
-    - Resume chunks are embedded in batches when possible.
+    LOCAL:
+        Uses SentenceTransformer + ChromaDB when
+        VECTOR_STORE_LIGHTWEIGHT is disabled.
 
-    Embedding model and similarity logic remain unchanged.
+    RENDER / LOW MEMORY:
+        Uses lightweight pure-Python lexical similarity.
+        This avoids loading Torch, SentenceTransformers,
+        and ChromaDB into the Render 512 MB instance.
+
+    IMPORTANT:
+        The LLM/Groq analysis is NOT changed.
+        Only the optional vector retrieval layer changes.
     """
 
-    # ---------------------------------------------------------
-    # SHARED EMBEDDING MODEL
-    # ---------------------------------------------------------
+    # Shared lightweight storage so different VectorStore
+    # instances can see the same collections in one process.
+    _lightweight_collections: Dict[str, List[Dict[str, Any]]] = {}
+
+    # Shared SentenceTransformer for LOCAL mode only.
     _shared_encoder = None
     _encoder_load_failed = False
 
     def __init__(self, collection_name: str = "resume_screening"):
         self.collection_name = collection_name
 
-        # Chroma is lazy
+        # Detect lightweight mode.
+        self.lightweight_mode = (
+            os.getenv("VECTOR_STORE_LIGHTWEIGHT", "false")
+            .strip()
+            .lower()
+            in ("1", "true", "yes", "on")
+        )
+
         self.chroma_client = None
         self.collection = None
         self._chroma_initialized = False
 
-        # Lightweight fallback storage
-        self.fallback_storage: List[Dict[str, Any]] = []
+        # Shared lightweight collection
+        if collection_name not in VectorStore._lightweight_collections:
+            VectorStore._lightweight_collections[collection_name] = []
 
-    # ---------------------------------------------------------
-    # CHROMA INITIALIZATION
-    # ---------------------------------------------------------
+        self.fallback_storage = VectorStore._lightweight_collections[
+            collection_name
+        ]
+
+    # =========================================================
+    # CHROMA INITIALIZATION - LOCAL ONLY
+    # =========================================================
+
     def _init_chroma(self):
         """
-        Initialize ChromaDB only when vector storage is actually needed.
+        Initialize ChromaDB only in full/local mode.
+        Never load ChromaDB when lightweight mode is enabled.
         """
+
+        if self.lightweight_mode:
+            return
 
         if self._chroma_initialized:
             return
@@ -66,22 +91,36 @@ class VectorStore:
                 )
             )
 
+            print(
+                "VECTOR STORE: ChromaDB enabled.",
+                flush=True
+            )
+
         except Exception as e:
-            # Chroma unavailable → fallback storage
             self.chroma_client = None
             self.collection = None
 
-    # ---------------------------------------------------------
-    # SHARED SENTENCE TRANSFORMER
-    # ---------------------------------------------------------
+            print(
+                f"VECTOR STORE: ChromaDB unavailable: {e}",
+                flush=True
+            )
+
+    # =========================================================
+    # SENTENCE TRANSFORMER - LOCAL ONLY
+    # =========================================================
+
     @property
     def encoder(self):
         """
-        Return one shared SentenceTransformer instance.
+        Load SentenceTransformer only in full/local mode.
 
-        Previously every VectorStore instance had its own encoder.
-        Now all VectorStore instances reuse the same model.
+        In lightweight mode this property never imports:
+            - torch
+            - sentence_transformers
         """
+
+        if self.lightweight_mode:
+            return "mock"
 
         if VectorStore._shared_encoder is not None:
             return VectorStore._shared_encoder
@@ -94,7 +133,7 @@ class VectorStore:
             from app.core.config import settings
 
             print(
-                "VECTOR STORE: Loading shared embedding model "
+                "VECTOR STORE: Loading local embedding model "
                 f"{settings.EMBEDDING_MODEL_NAME}...",
                 flush=True
             )
@@ -105,7 +144,7 @@ class VectorStore:
             )
 
             print(
-                "VECTOR STORE: Shared embedding model loaded.",
+                "VECTOR STORE: Local embedding model loaded.",
                 flush=True
             )
 
@@ -113,7 +152,7 @@ class VectorStore:
 
         except Exception as e:
             print(
-                f"VECTOR STORE: Failed to load embedding model: {e}",
+                f"VECTOR STORE: Embedding model failed: {e}",
                 flush=True
             )
 
@@ -121,17 +160,193 @@ class VectorStore:
 
             return "mock"
 
-    # ---------------------------------------------------------
-    # SINGLE EMBEDDING
-    # ---------------------------------------------------------
+    # =========================================================
+    # TEXT NORMALIZATION
+    # =========================================================
+
+    @staticmethod
+    def _tokens(text: str) -> List[str]:
+        """
+        Lightweight tokenizer.
+
+        No external ML libraries are required.
+        """
+
+        if not text:
+            return []
+
+        text = text.lower()
+
+        # Preserve useful technical terms:
+        # c++, c#, .net, node.js, aws, etc.
+        tokens = re.findall(
+            r"[a-zA-Z0-9]+(?:[.+#-][a-zA-Z0-9]+)*",
+            text
+        )
+
+        # Remove extremely common English words.
+        stop_words = {
+            "the",
+            "and",
+            "or",
+            "a",
+            "an",
+            "to",
+            "of",
+            "in",
+            "on",
+            "for",
+            "with",
+            "is",
+            "are",
+            "be",
+            "as",
+            "at",
+            "by",
+            "from",
+            "this",
+            "that",
+            "using",
+            "use",
+            "used",
+            "experience",
+            "required",
+            "preferred",
+            "knowledge",
+            "skill",
+            "skills",
+            "developer",
+            "development",
+        }
+
+        return [
+            token
+            for token in tokens
+            if token not in stop_words
+            and len(token) > 1
+        ]
+
+    # =========================================================
+    # LIGHTWEIGHT SIMILARITY
+    # =========================================================
+
+    @classmethod
+    def _lightweight_similarity(
+        cls,
+        query: str,
+        document: str
+    ) -> float:
+        """
+        Lightweight similarity score.
+
+        Combines:
+            1. Token overlap
+            2. Sequence similarity
+            3. Technical phrase matching
+
+        Returns 0.0 - 1.0.
+        """
+
+        query_tokens = cls._tokens(query)
+        doc_tokens = cls._tokens(document)
+
+        if not query_tokens or not doc_tokens:
+            return 0.0
+
+        query_set = set(query_tokens)
+        doc_set = set(doc_tokens)
+
+        # Jaccard overlap
+        intersection = query_set & doc_set
+        union = query_set | doc_set
+
+        jaccard = (
+            len(intersection) / len(union)
+            if union
+            else 0.0
+        )
+
+        # Query coverage
+        coverage = (
+            len(intersection) / len(query_set)
+            if query_set
+            else 0.0
+        )
+
+        # Sequence similarity
+        query_normalized = " ".join(query_tokens)
+        doc_normalized = " ".join(doc_tokens)
+
+        sequence_score = SequenceMatcher(
+            None,
+            query_normalized,
+            doc_normalized
+        ).ratio()
+
+        # Technical phrase matching
+        phrase_score = 0.0
+
+        query_lower = query.lower()
+        doc_lower = document.lower()
+
+        if query_lower in doc_lower:
+            phrase_score = 1.0
+        else:
+            # Check multi-word phrases
+            query_words = query_lower.split()
+
+            if len(query_words) >= 2:
+                matched_phrases = 0
+
+                for i in range(len(query_words) - 1):
+                    phrase = (
+                        query_words[i]
+                        + " "
+                        + query_words[i + 1]
+                    )
+
+                    if phrase in doc_lower:
+                        matched_phrases += 1
+
+                possible = max(1, len(query_words) - 1)
+
+                phrase_score = (
+                    matched_phrases / possible
+                )
+
+        # Weighted score
+        score = (
+            (coverage * 0.45)
+            + (jaccard * 0.25)
+            + (sequence_score * 0.15)
+            + (phrase_score * 0.15)
+        )
+
+        return min(
+            1.0,
+            max(
+                0.0,
+                float(score)
+            )
+        )
+
+    # =========================================================
+    # EMBEDDING - LOCAL ONLY
+    # =========================================================
+
     def _get_embedding(self, text: str) -> List[float]:
         """
-        Generate one embedding while preserving the existing model.
+        Full embedding in LOCAL mode.
+
+        Lightweight mode intentionally does not create
+        real embeddings because that would require heavy ML
+        dependencies.
         """
 
         encoder = self.encoder
 
         if encoder != "mock":
+
             embedding = encoder.encode(
                 text,
                 convert_to_numpy=True,
@@ -140,88 +355,43 @@ class VectorStore:
 
             return embedding.tolist()
 
-        return self._mock_embedding(text)
-
-    # ---------------------------------------------------------
-    # BATCH EMBEDDING
-    # ---------------------------------------------------------
-    def _get_embeddings(self, texts: List[str]) -> List[List[float]]:
-        """
-        Generate embeddings efficiently.
-
-        Uses SentenceTransformer batch encoding when available.
-        Falls back to individual embeddings if necessary.
-        """
-
-        if not texts:
-            return []
-
-        encoder = self.encoder
-
-        if encoder != "mock":
-            try:
-                embeddings = encoder.encode(
-                    texts,
-                    batch_size=16,
-                    show_progress_bar=False,
-                    convert_to_numpy=True,
-                    normalize_embeddings=False
-                )
-
-                return embeddings.tolist()
-
-            except Exception as e:
-                print(
-                    f"VECTOR STORE: Batch embedding failed: {e}. "
-                    "Falling back to individual encoding.",
-                    flush=True
-                )
-
-        return [
-            self._mock_embedding(text)
-            for text in texts
-        ]
-
-    # ---------------------------------------------------------
-    # LIGHTWEIGHT FALLBACK EMBEDDING
-    # ---------------------------------------------------------
-    def _mock_embedding(self, text: str) -> List[float]:
-        """
-        Deterministic lightweight fallback.
-
-        This is used only if SentenceTransformer cannot be loaded.
-        """
-
+        # Deterministic lightweight vector.
         import hashlib
 
-        words = text.lower().split()
+        words = self._tokens(text)
 
         vec = [0.0] * 64
 
         for word in words:
+
             idx = (
                 int(
                     hashlib.md5(
                         word.encode()
                     ).hexdigest(),
                     16
-                ) % 64
+                )
+                % 64
             )
 
             vec[idx] += 1.0
 
         norm = math.sqrt(
-            sum(v * v for v in vec)
+            sum(
+                value * value
+                for value in vec
+            )
         ) or 1.0
 
         return [
-            v / norm
-            for v in vec
+            value / norm
+            for value in vec
         ]
 
-    # ---------------------------------------------------------
+    # =========================================================
     # ADD TEXTS
-    # ---------------------------------------------------------
+    # =========================================================
+
     def add_texts(
         self,
         texts: List[str],
@@ -229,21 +399,62 @@ class VectorStore:
         ids: List[str]
     ):
         """
-        Add documents and embeddings to ChromaDB.
+        Add documents.
 
-        Uses batch embedding to reduce repeated model overhead.
+        Lightweight mode:
+            Stores text + metadata only.
+
+        Local mode:
+            Uses ChromaDB + SentenceTransformer.
         """
 
         if not texts:
             return
 
+        # -----------------------------------------------------
+        # RENDER / LIGHTWEIGHT MODE
+        # -----------------------------------------------------
+
+        if self.lightweight_mode:
+
+            for text, meta, doc_id in zip(
+                texts,
+                metadatas,
+                ids
+            ):
+
+                self.fallback_storage.append(
+                    {
+                        "id": doc_id,
+                        "text": text,
+                        "metadata": meta
+                    }
+                )
+
+            print(
+                f"VECTOR STORE: Lightweight mode stored "
+                f"{len(texts)} documents in "
+                f"'{self.collection_name}'.",
+                flush=True
+            )
+
+            return
+
+        # -----------------------------------------------------
+        # LOCAL FULL MODE
+        # -----------------------------------------------------
+
         self._init_chroma()
 
-        embeddings = self._get_embeddings(texts)
+        embeddings = [
+            self._get_embedding(text)
+            for text in texts
+        ]
 
         if self.collection:
 
             try:
+
                 self.collection.add(
                     documents=texts,
                     embeddings=embeddings,
@@ -254,19 +465,20 @@ class VectorStore:
                 return
 
             except Exception as e:
+
                 print(
-                    f"VECTOR STORE: Chroma add failed: {e}. "
-                    "Using fallback storage.",
+                    f"VECTOR STORE: Chroma add failed: {e}",
                     flush=True
                 )
 
-        # Fallback storage
+        # Local fallback
         for text, meta, doc_id, emb in zip(
             texts,
             metadatas,
             ids,
             embeddings
         ):
+
             self.fallback_storage.append(
                 {
                     "id": doc_id,
@@ -276,9 +488,10 @@ class VectorStore:
                 }
             )
 
-    # ---------------------------------------------------------
-    # SEARCH SIMILARITY
-    # ---------------------------------------------------------
+    # =========================================================
+    # SEARCH
+    # =========================================================
+
     def search_similarity(
         self,
         query: str,
@@ -286,10 +499,62 @@ class VectorStore:
         filter_metadata: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
         """
-        Semantic similarity search.
+        Search documents.
 
-        Existing Chroma similarity behavior is preserved.
+        Lightweight mode:
+            Pure Python similarity.
+
+        Local mode:
+            ChromaDB semantic similarity.
         """
+
+        # -----------------------------------------------------
+        # RENDER / LIGHTWEIGHT SEARCH
+        # -----------------------------------------------------
+
+        if self.lightweight_mode:
+
+            matches = []
+
+            for item in self.fallback_storage:
+
+                if filter_metadata:
+
+                    match_filter = all(
+                        item["metadata"].get(k) == v
+                        for k, v in filter_metadata.items()
+                    )
+
+                    if not match_filter:
+                        continue
+
+                score = self._lightweight_similarity(
+                    query,
+                    item["text"]
+                )
+
+                matches.append(
+                    {
+                        "id": item["id"],
+                        "text": item["text"],
+                        "metadata": item["metadata"],
+                        "similarity_score": round(
+                            score,
+                            4
+                        )
+                    }
+                )
+
+            matches.sort(
+                key=lambda x: x["similarity_score"],
+                reverse=True
+            )
+
+            return matches[:n_results]
+
+        # -----------------------------------------------------
+        # LOCAL FULL MODE
+        # -----------------------------------------------------
 
         self._init_chroma()
 
@@ -298,6 +563,7 @@ class VectorStore:
         if self.collection:
 
             try:
+
                 where_clause = (
                     filter_metadata
                     if filter_metadata
@@ -317,6 +583,7 @@ class VectorStore:
                     and "documents" in results
                     and results["documents"]
                 ):
+
                     docs = results["documents"][0]
                     metas = results["metadatas"][0]
                     ids = results["ids"][0]
@@ -332,6 +599,7 @@ class VectorStore:
                         ids,
                         distances
                     ):
+
                         sim_score = (
                             max(
                                 0.0,
@@ -356,20 +624,25 @@ class VectorStore:
                 return matches
 
             except Exception as e:
+
                 print(
-                    f"VECTOR STORE: Chroma search failed: {e}. "
-                    "Using fallback storage.",
+                    f"VECTOR STORE: Chroma search failed: {e}",
                     flush=True
                 )
 
         # -----------------------------------------------------
-        # FALLBACK COSINE SEARCH
+        # LOCAL FALLBACK COSINE SEARCH
         # -----------------------------------------------------
+
         matches = []
 
         for item in self.fallback_storage:
 
+            if "embedding" not in item:
+                continue
+
             if filter_metadata:
+
                 match_filter = all(
                     item["metadata"].get(k) == v
                     for k, v in filter_metadata.items()
@@ -378,20 +651,28 @@ class VectorStore:
                 if not match_filter:
                     continue
 
+            item_embedding = item["embedding"]
+
             dot = sum(
                 a * b
                 for a, b in zip(
                     query_emb,
-                    item["embedding"]
+                    item_embedding
                 )
             )
 
             norm_a = math.sqrt(
-                sum(a * a for a in query_emb)
+                sum(
+                    a * a
+                    for a in query_emb
+                )
             ) or 1.0
 
             norm_b = math.sqrt(
-                sum(b * b for b in item["embedding"])
+                sum(
+                    b * b
+                    for b in item_embedding
+                )
             ) or 1.0
 
             sim = dot / (
@@ -404,7 +685,10 @@ class VectorStore:
                     "text": item["text"],
                     "metadata": item["metadata"],
                     "similarity_score": round(
-                        max(0.0, float(sim)),
+                        max(
+                            0.0,
+                            float(sim)
+                        ),
                         4
                     )
                 }
